@@ -1,103 +1,100 @@
 import logging
 import json
 import pytest
-from unittest import TestCase
-from django.test import Client
 from django.urls import reverse
 from companies.models import Company
 
-
-"""
+"""API url patterns:
 URL pattern: ^users/$ Name: 'user-list'
 URL pattern: ^users/{pk}/$ Name: 'user-detail'
 URL pattern: ^accounts/$ Name: 'account-list'
 URL pattern: ^accounts/{pk}/$ Name: 'account-detail'
 """
+companies_url = reverse("companies-list")
+pytestmark = pytest.mark.django_db
+
+# --------------------------TEST GET COMPANIES ------------------------------
 
 
-@pytest.mark.django_db
-class BasicCompanyApiTestCase(TestCase):  # parent class containing generic setup -> DRY
-    def setUp(self) -> None:  # setUp runs before each test function -> DRY
-        self.client = Client()
-        self.companies_url = reverse("companies-list")  # {basename}-list
-
-    def tearDown(self) -> None:  # tearDown runs after each test function
-        pass
+def test_zero_companies_should_return_empty_list(client) -> None:
+    response = client.get(companies_url)
+    assert response.status_code == 200
+    assert json.loads(response.content) == []
 
 
-class TestGetCompanies(BasicCompanyApiTestCase):
-    def test_zero_companies_should_return_empty_list(self) -> None:
-        response = self.client.get(self.companies_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.content), [])
-
-    def test_one_company_exists_should_succeed(self) -> None:
-        test_company = Company.objects.create(name="Amazon")
-        response = self.client.get(self.companies_url)
-        response_content = json.loads(response.content)[0]
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response_content.get("name"), test_company.name)
-        self.assertEqual(response_content.get("status"), "Hiring")
-        self.assertEqual(response_content.get("application_link"), "")
-        self.assertEqual(response_content.get("notes"), "")
-        test_company.delete()
+def test_one_company_exists_should_succeed(client) -> None:
+    test_company = Company.objects.create(name="Amazon")
+    response = client.get(companies_url)
+    response_content = json.loads(response.content)[0]
+    assert response.status_code == 200
+    assert response_content.get("name") == test_company.name
+    assert response_content.get("status") == "Hiring"
+    assert response_content.get("application_link") == ""
+    assert response_content.get("notes") == ""
+    test_company.delete()
 
 
-class TestPostCompanies(BasicCompanyApiTestCase):
-    def test_create_company_without_args_should_fail(self) -> None:
-        response = self.client.post(path=self.companies_url)
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            json.loads(response.content), {"name": ["This field is required."]}
-        )
+# --------------------------TEST POST COMPANIES ------------------------------
 
-    def test_create_existing_company_should_fail(self) -> None:
-        Company.objects.create(name="Apple")
-        response = self.client.post(path=self.companies_url, data={"name": "Apple"})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(
-            json.loads(response.content),
-            {"name": ["company with this name already exists."]},
-        )
 
-    def test_create_company_with_only_name_all_fields_should_be_default(self) -> None:
-        response = self.client.post(
-            path=self.companies_url, data={"name": "test company"}
-        )
-        self.assertEqual(response.status_code, 201)
-        response_content = json.loads(response.content)
-        self.assertEqual(response_content.get("name"), "test company")
-        self.assertEqual(response_content.get("status"), "Hiring")
-        self.assertEqual(response_content.get("application_link"), "")
-        self.assertEqual(response_content.get("notes"), "")
+def test_create_company_without_args_should_fail(client) -> None:
+    response = client.post(path=companies_url)
+    assert response.status_code == 400
+    assert json.loads(response.content) == {"name": ["This field is required."]}
 
-    def test_create_company_with_status_layoffs_should_succeed(self) -> None:
-        response = self.client.post(
-            path=self.companies_url, data={"name": "test company", "status": "Layoffs"}
-        )
-        self.assertEqual(response.status_code, 201)
-        response_content = json.loads(response.content)
-        self.assertEqual(response_content.get("name"), "test company")
-        self.assertEqual(response_content.get("status"), "Layoffs")
-        self.assertEqual(response_content.get("application_link"), "")
-        self.assertEqual(response_content.get("notes"), "")
 
-    def test_create_company_with_wrong_status_should_fail(self) -> None:
-        response = self.client.post(
-            path=self.companies_url,
-            data={"name": "test company", "status": "wrong_status"},
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("wrong_status", str(response.content))
-        self.assertIn("is not a valid choice", str(response.content))
+def test_create_existing_company_should_fail(client) -> None:
+    Company.objects.create(name="Apple")
+    response = client.post(path=companies_url, data={"name": "Apple"})
+    assert response.status_code == 400
+    assert json.loads(response.content) == {
+        "name": ["company with this name already exists."]
+    }
 
-    @pytest.mark.xfail
-    def test_should_be_ok_if_fails(self) -> None:
-        self.assertEqual(1, 2)
 
-    @pytest.mark.skip
-    def test_should_be_skipped(self) -> None:
-        self.assertEqual(1, 2)
+def test_create_company_with_only_name_all_fields_should_be_default(client) -> None:
+    response = client.post(path=companies_url, data={"name": "test company"})
+    assert response.status_code == 201
+    response_content = json.loads(response.content)
+    assert response_content.get("name") == "test company"
+    assert response_content.get("status") == "Hiring"
+    assert response_content.get("application_link") == ""
+    assert response_content.get("notes") == ""
+
+
+def test_create_company_with_status_layoffs_should_succeed(client) -> None:
+    response = client.post(
+        path=companies_url, data={"name": "test company", "status": "Layoffs"}
+    )
+    assert response.status_code == 201
+    response_content = json.loads(response.content)
+    assert response_content.get("name") == "test company"
+    assert response_content.get("status") == "Layoffs"
+    assert response_content.get("application_link") == ""
+    assert response_content.get("notes") == ""
+
+
+def test_create_company_with_wrong_status_should_fail(client) -> None:
+    response = client.post(
+        path=companies_url,
+        data={"name": "test company", "status": "wrong_status"},
+    )
+    assert response.status_code == 400
+    assert "wrong_status" in str(response.content)
+    assert "is not a valid choice" in str(response.content)
+
+
+# --------------------------TEST VARIOUS ------------------------------
+
+
+@pytest.mark.xfail
+def test_should_be_ok_if_fails() -> None:
+    assert 1 == 2
+
+
+@pytest.mark.skip
+def test_should_be_skipped() -> None:
+    assert 1 == 2
 
 
 def raise_covid19_exception() -> None:
